@@ -1,6 +1,15 @@
 const path = require('path');
 const child_process = require('child_process');
 
+const _makeExitPromise = p => new Promise((accept, reject) => {
+  p.on('exit', code => {
+    accept(code);
+  });
+  p.on('error', err => {
+    reject(err);
+  });
+});
+
 const _requestVncServerProcess = () => new Promise((accept, reject) => {
   const vncServerProcess = child_process.spawn(
     path.join(path.dirname(require.resolve('tigervnc')), 'usr', 'bin', 'Xvnc'),
@@ -21,6 +30,7 @@ const _requestVncServerProcess = () => new Promise((accept, reject) => {
   };
   vncServerProcess.stderr.setEncoding('utf8');
   vncServerProcess.stderr.on('data', _stderr);
+  vncServerProcess.exitPromise = _makeExitPromise(vncServerProcess);
 });
 const _requestRetroarchProcess = () => new Promise((accept, reject) => {
   const retroarchProcess = child_process.spawn(
@@ -35,6 +45,7 @@ const _requestRetroarchProcess = () => new Promise((accept, reject) => {
   );
   retroarchProcess.stdout.pipe(process.stdout);
   retroarchProcess.stderr.pipe(process.stderr);
+  retroarchProcess.exitPromise = _makeExitPromise(retroarchProcess);
 
   accept(retroarchProcess);
 });
@@ -48,6 +59,7 @@ const _requestWebsockifyProcess = ({port}) => new Promise((accept, reject) => {
   );
   websockifyProcess.stdout.pipe(process.stdout);
   websockifyProcess.stderr.pipe(process.stderr);
+  websockifyProcess.exitPromise = _makeExitPromise(websockifyProcess);
 
   accept(websockifyProcess);
 });
@@ -66,6 +78,12 @@ const _listen = ({port = 8000} = {}) => _requestVncServerProcess()
           retroarchProcess.kill();
           websockifyProcess.kill();
           vncServerProcess.kill();
+
+          return Promise.all([
+            retroarchProcess.exitPromise,
+            websockifyProcess.exitPromise,
+            vncServerProcess.exitPromise,
+          ]).then(() => {});
         };
 
         return {
