@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/modulesio/retroarch#readme",
   "dependencies": {
-    "novnc-browser": "0.0.5",
+    "novnc-browser": "0.0.6",
     "tigervnc": "0.0.2",
     "websockify-browser": "0.0.1"
   }
