@@ -1,16 +1,29 @@
 const path = require('path');
 const child_process = require('child_process');
 
-const vncServerProcess = child_process.spawn(
-  path.join(path.dirname(require.resolve('tigervnc')), 'usr', 'bin', 'Xvnc'),
-  [ ':2', '-geometry', '320x240', '-depth', '16', '-SecurityTypes', 'None', '-rfbport', '5902' ]
-);
-vncServerProcess.stdout.pipe(process.stdout);
-vncServerProcess.stderr.pipe(process.stderr);
+const _requestVncServerProcess = () => new Promise((accept, reject) => {
+  const vncServerProcess = child_process.spawn(
+    path.join(path.dirname(require.resolve('tigervnc')), 'usr', 'bin', 'Xvnc'),
+    [ ':2', '-geometry', '320x240', '-depth', '16', '-SecurityTypes', 'None', '-rfbport', '5902' ]
+  );
+  vncServerProcess.stdout.pipe(process.stdout);
+  vncServerProcess.stderr.pipe(process.stderr);
 
-const _startApp = () => {
+  let b = '';
+  const _stderr = s => {
+    b += s;
 
-  const emulatorProcess = child_process.spawn(
+    if (/listening/i.test(b)) {
+      vncServerProcess.stderr.removeListener('data', _stderr);
+
+      accept(vncServerProcess);
+    }
+  };
+  vncServerProcess.stderr.setEncoding('utf8');
+  vncServerProcess.stderr.on('data', _stderr);
+});
+const _requestRetroarchProcess = () => new Promise((accept, reject) => {
+  const retroarchProcess = child_process.spawn(
     'retroarch',
     [ '-c', path.join(__dirname, 'config', 'retroarch.cfg'), '--verbose', ],
     {
@@ -20,36 +33,51 @@ const _startApp = () => {
       cwd: process.cwd(),
     }
   );
-  emulatorProcess.stdout.pipe(process.stdout);
-  emulatorProcess.stderr.pipe(process.stderr);
+  retroarchProcess.stdout.pipe(process.stdout);
+  retroarchProcess.stderr.pipe(process.stderr);
 
+  accept(retroarchProcess);
+});
+const _requestWebsockifyProcess = ({port}) => new Promise((accept, reject) => {
   const websockifyProcess = child_process.spawn(
     'node',
     [
       require.resolve('websockify-browser'),
-      '--web', path.dirname(require.resolve('novnc-browser')), '8000', 'localhost:5902'
+      '--web', path.dirname(require.resolve('novnc-browser')), String(port), '127.0.0.1:5902'
     ]
   );
   websockifyProcess.stdout.pipe(process.stdout);
   websockifyProcess.stderr.pipe(process.stderr);
 
-  process.on('SIGINT', () => {
-    emulatorProcess.kill();
-    websockifyProcess.kill();
-    vncServerProcess.kill();
+  accept(websockifyProcess);
+});
 
-    process.exit();
-  });
-}
+const _listen = ({port = 8000} = {}) => _requestVncServerProcess()
+  .then(vncServerProcess =>
+    Promise.all([
+      _requestRetroarchProcess(),
+      _requestWebsockifyProcess({port}),
+    ])
+      .then(([
+        retroarchProcess,
+        websockifyProcess,
+      ]) => {
+        const _close = () => {
+          retroarchProcess.kill();
+          websockifyProcess.kill();
+          vncServerProcess.kill();
+        };
 
-let b = '';
-const _listeningListener = d => {
-  b += d.toString('utf8');
-
-  if (/listening/i.test(b)) {
-    _startApp();
-
-    vncServerProcess.stderr.removeListener('data', _listeningListener);
-  }
+        return {
+          close: _close,
+        };
+      })
+  );
+  
+module.exports = {
+  listen: _listen,
 };
-vncServerProcess.stderr.on('data', _listeningListener);
+
+if (require.main === module) {
+  _listen();
+}
