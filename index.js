@@ -30,6 +30,7 @@ const _requestVncServerProcess = () => new Promise((accept, reject) => {
   };
   vncServerProcess.stderr.setEncoding('utf8');
   vncServerProcess.stderr.on('data', _stderr);
+
   vncServerProcess.exitPromise = _makeExitPromise(vncServerProcess);
 });
 const _requestRetroarchProcess = () => new Promise((accept, reject) => {
@@ -45,6 +46,7 @@ const _requestRetroarchProcess = () => new Promise((accept, reject) => {
   );
   retroarchProcess.stdout.pipe(process.stdout);
   retroarchProcess.stderr.pipe(process.stderr);
+
   retroarchProcess.exitPromise = _makeExitPromise(retroarchProcess);
 
   accept(retroarchProcess);
@@ -59,9 +61,21 @@ const _requestWebsockifyProcess = ({port}) => new Promise((accept, reject) => {
   );
   websockifyProcess.stdout.pipe(process.stdout);
   websockifyProcess.stderr.pipe(process.stderr);
-  websockifyProcess.exitPromise = _makeExitPromise(websockifyProcess);
 
-  accept(websockifyProcess);
+  let b = '';
+  const _stdout = s => {
+    b += s;
+
+    if (/serving/i.test(b)) {
+      websockifyProcess.stderr.removeListener('data', _stdout);
+
+      accept(websockifyProcess);
+    }
+  };
+  websockifyProcess.stdout.setEncoding('utf8');
+  websockifyProcess.stdout.on('data', _stdout);
+
+  websockifyProcess.exitPromise = _makeExitPromise(websockifyProcess);
 });
 
 const _listen = ({port = 8000} = {}) => _requestVncServerProcess()
