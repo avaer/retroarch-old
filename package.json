@@ -19,6 +19,6 @@
   "dependencies": {
     "novnc-browser": "0.0.6",
     "tigervnc": "0.0.2",
-    "websockify-browser": "0.0.1"
+    "websockify-browser": "0.0.2"
   }
 }
